@@ -1,16 +1,17 @@
-import os
-from flask import Flask, request
 from telebot import TeleBot
-from telebot.types import Message, Update
+from telebot.types import Update, Message
+import os
 from dotenv import load_dotenv
-from threading import Thread
+from flask import Flask, request, abort
 
 load_dotenv()
 
-app = Flask(__name__)
-bot = TeleBot(os.getenv('TOKEN'))
 TOKEN = os.getenv('TOKEN')
 TARGET_CHAT_ID = int(os.getenv('TARGET_CHAT_ID'))
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+
+bot = TeleBot(TOKEN)
+app = Flask(__name__)
 
 PROJECT_INFO = """
 Отправьте /send чтобы поделиться кейсом.
@@ -36,60 +37,67 @@ SEND_REPLY_MESSAGE = """
 3. Ваши контакты для возможного взаимодействия.
 """
 
-@bot.message_handler(commands=['start'])
-def handle_about(message: Message):
-    bot.reply_to(message, PROJECT_INFO)
+SHARE_REPLY_MESSAGE = """
+Отправьте вложения (фото/документ/видео — одно сообщение).
+"""
 
-@bot.message_handler(commands=['contacts'])
-def handle_contacts(message: Message):
-    bot.reply_to(message, COORDINATOR_CONTACTS)
+user_states = {}
 
-@bot.message_handler(commands=['send'])
-def handle_send(message: Message):
-    bot.reply_to(message, SEND_REPLY_MESSAGE)
-    bot.register_next_step_handler(message, forward_text_solution)
+def process_message(message: Message):
+    user_id = message.from_user.id
 
-def forward_text_solution(message: Message):
-    if message.text and not message.text.startswith('/'):
-        bot.forward_message(TARGET_CHAT_ID, message.chat.id, message.message_id)
-        bot.reply_to(message, "Решение отправлено.")
+    if message.text.startswith('/'):
+        if user_states.get(user_id):
+            del user_states[user_id]
+
+        if message.text == '/start':
+            bot.send_message(message.chat.id, PROJECT_INFO)
+        elif message.text == '/contacts':
+            bot.send_message(message.chat.id, COORDINATOR_CONTACTS)
+        elif message.text == '/send':
+            bot.send_message(message.chat.id, SEND_REPLY_MESSAGE)
+            user_states[user_id] = {'state': 'send'}
+        elif message.text == '/share':
+            bot.send_message(message.chat.id, SHARE_REPLY_MESSAGE)
+            user_states[user_id] = {'state': 'share'}
     else:
-        bot.reply_to(message, "Пожалуйста отправьте только текстовое сообщение.")
+        state = user_states.get(user_id)
+        if not state:
+            return
 
-@bot.message_handler(commands=['share'])
-def handle_share(message: Message):
-    bot.reply_to(message, "Отправьте вложения (документ/фото/видео — одно сообщение).")
-    bot.register_next_step_handler(message, forward_attachment)
+        if state['state'] == 'send':
+            if message.text and not message.text.startswith('/'):
+                bot.forward_message(TARGET_CHAT_ID, message.chat.id, message.message_id)
+                bot.send_message(message.chat.id, "Описание решения отправлено.")
+            else:
+                bot.send_message(message.chat.id, "Пожалуйста отправьте только текстовое сообщение.")
+                return
+        elif state['state'] == 'share':
+            if message.photo or message.document or message.video:
+                bot.forward_message(TARGET_CHAT_ID, message.chat.id, message.message_id)
+                bot.send_message(message.chat.id, "Вложения отправлены.")
+            else:
+                bot.send_message(message.chat.id, "Пожалуйста отправьте только фото, документ или видео.")
+                return
 
-def forward_attachment(message: Message):
-    if message.photo or message.document or message.video:
-        bot.forward_message(TARGET_CHAT_ID, message.chat.id, message.message_id)
-        bot.reply_to(message, "Вложения отправлены.")
-    else:
-        bot.reply_to(message, "Пожалуйста отправьте только документ, фото или видео.")
+        del user_states[user_id]
 
-@app.route(f"/{TOKEN}", methods=["POST"])
+@app.route('/webhook', methods=['POST'])
 def webhook():
-    if request.headers.get("content-type") == "application/json":
-        json_string = request.get_data().decode("utf-8")
-        update = Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return ""
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = Update.de_json(json_string, bot)
+        if update.message:
+            process_message(update.message)
+        return '', 200
     else:
-        return "Unauthorized."
+        abort(403)
 
-@app.route("/")
-def health_check():
-    return "OK"
+@app.route('/')
+def index():
+    return 'Bot is running'
 
-def run_bot():
+if __name__ == '__main__':
     bot.remove_webhook()
-    # bot.set_webhook(url=f"https://ai-municipal-bot.onrender.com/{TOKEN}")
-    bot.infinity_polling(none_stop=True, interval=0)
-
-if __name__ == "__main__":
-    t = Thread(target=run_bot)
-    t.daemon = True
-    t.start()
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
