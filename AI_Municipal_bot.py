@@ -84,7 +84,7 @@ def health_check():
 
 def run_bot():
     bot.remove_webhook()
-    bot.set_webhook(url=f"https://ваш-домен.onrender.com/{TOKEN}")
+    # bot.set_webhook(url=f"https://ai-municipal-bot.onrender.com/{TOKEN}")
     bot.infinity_polling(none_stop=True, interval=0)
 
 if __name__ == "__main__":
