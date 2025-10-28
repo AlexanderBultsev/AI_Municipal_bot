@@ -89,8 +89,8 @@ def handle_all(message: Message):
 @app.route('/webhook', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
-        json_data = request.get_json()
-        update = Update.de_json(json_data, bot)
+        json_string = request.get_data().decode('utf-8')
+        update = Update.de_json(json_string)
         bot.process_new_updates([update])
         return '', 200
     else:
