@@ -82,13 +82,16 @@ def process_message(message: Message):
 
         del user_states[user_id]
 
+@bot.message_handler(func=lambda m: True)
+def handle_all(message: Message):
+    process_message(message)
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = Update.de_json(json_string, bot)
-        if update.message:
-            process_message(update.message)
+        json_data = request.get_json()
+        update = Update.de_json(json_data, bot)
+        bot.process_new_updates([update])
         return '', 200
     else:
         abort(403)
