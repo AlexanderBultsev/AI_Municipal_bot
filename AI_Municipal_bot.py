@@ -38,7 +38,7 @@ SEND_REPLY_MESSAGE = """
 """
 
 SHARE_REPLY_MESSAGE = """
-Отправьте вложения (фото/документ/видео — одно сообщение).
+Отправьте вложение (один документ/фото/видео).
 """
 
 @bot.message_handler(commands=['start'])
@@ -69,9 +69,9 @@ def handle_share(message: Message):
 def forward_attachment(message: Message):
     if  message.photo or message.document or message.video:
         bot.forward_message(TARGET_CHAT_ID, message.chat.id, message.message_id)
-        bot.reply_to(message, "Вложения отправлены.")
+        bot.reply_to(message, "Вложение отправлено.")
     else:
-        bot.reply_to(message, "Пожалуйста отправьте только документ, фото или видео.")
+        bot.reply_to(message, "Пожалуйста отправьте только один документ, фото или видео.")
 
 
 @app.route('/webhook', methods=['POST'])
