@@ -41,50 +41,38 @@ SHARE_REPLY_MESSAGE = """
 Отправьте вложения (фото/документ/видео — одно сообщение).
 """
 
-user_states = {}
+@bot.message_handler(commands=['start'])
+def handle_about(message: Message):
+    bot.reply_to(message, PROJECT_INFO)
 
-def process_message(message: Message):
-    user_id = message.from_user.id
+@bot.message_handler(commands=['contacts'])
+def handle_contacts(message: Message):
+    bot.reply_to(message, COORDINATOR_CONTACTS)
 
-    if message.text.startswith('/'):
-        if user_states.get(user_id):
-            del user_states[user_id]
+@bot.message_handler(commands=['send'])
+def handle_send(message: Message):
+    bot.reply_to(message, SEND_REPLY_MESSAGE)
+    bot.register_next_step_handler(message, forward_text_solution)
 
-        if message.text == '/start':
-            bot.send_message(message.chat.id, PROJECT_INFO)
-        elif message.text == '/contacts':
-            bot.send_message(message.chat.id, COORDINATOR_CONTACTS)
-        elif message.text == '/send':
-            bot.send_message(message.chat.id, SEND_REPLY_MESSAGE)
-            user_states[user_id] = {'state': 'send'}
-        elif message.text == '/share':
-            bot.send_message(message.chat.id, SHARE_REPLY_MESSAGE)
-            user_states[user_id] = {'state': 'share'}
+def forward_text_solution(message: Message):
+    if message.text and (message.text[0] != '/'):
+        bot.forward_message(TARGET_CHAT_ID, message.chat.id, message.message_id)
+        bot.reply_to(message, "Решение отправлено.")
     else:
-        state = user_states.get(user_id)
-        if not state:
-            return
+        bot.reply_to(message, "Пожалуйста отправьте только текстовое сообщение.")
 
-        if state['state'] == 'send':
-            if message.text and not message.text.startswith('/'):
-                bot.forward_message(TARGET_CHAT_ID, message.chat.id, message.message_id)
-                bot.send_message(message.chat.id, "Описание решения отправлено.")
-            else:
-                bot.send_message(message.chat.id, "Пожалуйста отправьте только текстовое сообщение.")
-                return
-        elif state['state'] == 'share':
-            if message.photo or message.document or message.video:
-                bot.forward_message(TARGET_CHAT_ID, message.chat.id, message.message_id)
-                bot.send_message(message.chat.id, "Вложения отправлены.")
-            else:
-                bot.send_message(message.chat.id, "Пожалуйста отправьте только фото, документ или видео.")
-                return
+@bot.message_handler(commands=['share'])
+def handle_share(message: Message):
+    bot.reply_to(message, SHARE_REPLY_MESSAGE)
+    bot.register_next_step_handler(message, forward_attachment)
 
-        del user_states[user_id]
+def forward_attachment(message: Message):
+    if  message.photo or message.document or message.video:
+        bot.forward_message(TARGET_CHAT_ID, message.chat.id, message.message_id)
+        bot.reply_to(message, "Вложения отправлены.")
+    else:
+        bot.reply_to(message, "Пожалуйста отправьте только документ, фото или видео.")
 
-@bot.message_handler(func=lambda m: True)
-def handle_all(message: Message):
-    process_message(message)
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
